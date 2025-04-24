@@ -9,6 +9,8 @@ from discord.ui import View, Select
 from dotenv import load_dotenv
 from collections import defaultdict, deque
 
+# 277025508352
+
 # Load API KEY
 load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -24,12 +26,46 @@ conversation_history = defaultdict(list)
 GENTLE_MODE = False
 OWNER_ID = int(os.getenv("OWNER_ID"))
 
+# Allowed guilds to use DinoGPT
+ALLOWED_GUILD_IDS = set(int(x) for x in os.getenv("ALLOWED_GUILD_IDS", "").split(",") if x)
+
 # Draw cooldown
 last_draw_times = defaultdict(float)
 DRAW_COOLDOWN = 30
 
 # Track the last 10 facts
 recent_facts = deque(maxlen=5)
+
+# Leave all guilds that I don't want DinoGPT in
+@bot.event
+async def on_guild_join(guild):
+    if guild.id not in ALLOWED_GUILD_IDS:
+        await guild.leave()
+
+# Block DMs to DinoGPT
+@bot.event
+async def on_message(message):
+    if message.guild is None or message.author.bot:
+        return
+    await bot.process_commands(message)
+
+# Restrict slash commands outside proper guilds
+def only_in_allowed():
+    def predicate(interaction: discord.Interaction):
+        if interaction.guild_id not in ALLOWED_GUILD_IDS:
+            raise app_commands.CheckFailure("I'm not allowed to run here.")
+        return True
+    return app_commands.check(predicate)
+
+# Sync all slash commands on boot
+@bot.event
+async def on_ready():
+    for guild_id in ALLOWED_GUILD_IDS:
+        try:
+            await bot.tree.sync(guild=discord.Object(id=guild_id))
+            print(f"✅ Synced to guild: {guild_id}")
+        except Exception as e:
+            print(f"❌ Failed to sync to guild {guild_id}: {e}")
 
 class ResourcesView(View):
     def __init__(self):
@@ -115,17 +151,13 @@ class ResourcesSelect(Select):
 
 # Command to access resources
 @bot.tree.command(name="resources", description="Get help through UTA's academic resources")
+@only_in_allowed()
 async def resources(interaction: discord.Interaction):
     await interaction.response.send_message("Choose a resource below:", view=ResourcesView(), ephemeral=True)
 
-# Sync all slash commands on boot
-@bot.event
-async def on_ready():
-    await bot.tree.sync()
-    print(f"Logged in as {bot.user} (ID: {bot.user.id})")
-
 # Toggle between kind and mean mode
 @bot.tree.command(name="gentle", description="DinoGPT loves its creator")
+@only_in_allowed()
 async def gentle(interaction: discord.Interaction):
     # Only creator of the bot (me) can use it
     if interaction.user.id != OWNER_ID:
@@ -144,6 +176,7 @@ async def gentle(interaction: discord.Interaction):
 
 # Ask DinoGPT a question
 @bot.tree.command(name="ask", description="Ask GPT-4.1-nano anything")
+@only_in_allowed()
 @app_commands.describe(prompt="Your question")
 async def ask(interaction: discord.Interaction, prompt: str):
     await interaction.response.defer(thinking=True, ephemeral=False)
@@ -218,6 +251,7 @@ async def ask(interaction: discord.Interaction, prompt: str):
 
 # DinoGPT will say a dino fact that's hopefully accurate
 @bot.tree.command(name="dinofact", description="Summon a fresh, fossil-fueled dino fact from the depths of time.")
+@only_in_allowed()
 async def dinofact(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=False, thinking=True)
 
@@ -264,6 +298,7 @@ async def dinofact(interaction: discord.Interaction):
 
 # Roast the person who uses this command
 @bot.tree.command(name="roastme", description="Ask DinoGPT to roast you brutally and publicly.")
+@only_in_allowed()
 async def roastme(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=False, thinking=True)
 
@@ -298,6 +333,7 @@ async def roastme(interaction: discord.Interaction):
 
 # Generate an image
 @bot.tree.command(name="draw", description="Generate an image using OpenAI's DALL·E 2")
+@only_in_allowed()
 @app_commands.describe(prompt="What should DinoGPT draw?")
 async def draw(interaction: discord.Interaction, prompt: str):
     await interaction.response.defer(thinking=True, ephemeral=False)
