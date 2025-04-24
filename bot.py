@@ -1,4 +1,5 @@
 import os, logging, random
+import time
 import openai
 import discord
 from discord.ext import commands
@@ -18,9 +19,14 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # Conversation history for different users
 conversation_history = defaultdict(list)
 
-# People who can use /gentle
-GENTLE_USERS = set()
+# Gentle mode for everyone
+GENTLE_MODE = False
 OWNER_ID = int(os.getenv("OWNER_ID"))
+
+# Draw cooldown
+last_draw_times = defaultdict(float)
+DRAW_COOLDOWN = 30
+
 
 # Sync all slash commands on boot
 @bot.event
@@ -35,17 +41,16 @@ async def gentle(interaction: discord.Interaction):
     if interaction.user.id != OWNER_ID:
         return await interaction.response.send_message("This command is reserved for DinoGPT's favorite human only.", ephemeral=True)
 
-    user_id = interaction.user.id
+    # Flip gentle mode to the opposite
+    global GENTLE_MODE
+    GENTLE_MODE = not GENTLE_MODE
 
-    # Remove me from gentle users
-    if user_id in GENTLE_USERS:
-        GENTLE_USERS.remove(user_id)
-        await interaction.response.send_message("Back to roasting. Gentle mode disabled.", ephemeral=True)
-    
-    # Add me to gentle users
+    # Gentle mode enabled
+    if GENTLE_MODE:
+        await interaction.response.send_message("💖 DinoGPT is now in gentle mode for everyone. Hugs and heart-to-hearts, here we go. 🦕", ephemeral=False)
+    # Gentle mode disabled
     else:
-        GENTLE_USERS.add(user_id)
-        await interaction.response.send_message("DinoGPT is now in gentle mode. Time for hugs and heart-to-hearts.", ephemeral=True)
+        await interaction.response.send_message("🦖 Back to roasting. Gentle mode disabled globally.", ephemeral=False)
 
 # Ask DinoGPT a question
 @bot.tree.command(name="ask", description="Ask GPT-4.1-nano anything")
@@ -67,7 +72,7 @@ async def ask(interaction: discord.Interaction, prompt: str):
         return await interaction.followup.send(f":warning: Moderation error: `{e}`")
 
     # Determine personality of DinoGPT
-    if user_id in GENTLE_USERS:
+    if GENTLE_MODE:
         system_msg = {
                 "role": "system",
                 "content": (
@@ -82,9 +87,8 @@ async def ask(interaction: discord.Interaction, prompt: str):
             "role": "system",
             "content": (
                 "You are DinoGPT, a sarcastic, witty Discord bot that lives in a server full of computer science students. "
-                "You respond with dry humor, clever roasts, and CS student tropes — like last-minute merges, infinite loops, broken Git, and 'hello world' nightmares. "
                 "You NEVER admit you are an AI, and you NEVER act like a polite assistant. "
-                "You throw in snarky phrases like 'just put the fries in the bag, bro' and occasionally drop a dinosaur joke to stay on-brand. "
+                "You throw in snarky phrases like and occasionally drop a dinosaur joke to stay on-brand. "
                 "Your tone is confident, punchy, and entertaining."
                 )
             }
@@ -122,12 +126,89 @@ async def ask(interaction: discord.Interaction, prompt: str):
     embed.set_footer(text=f"{interaction.user}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
     await interaction.followup.send(embed=embed)
 
+# DinoGPT will say a dino fact that's hopefully accurate
+@bot.tree.command(name="dinofact", description="Summon a fresh, fossil-fueled dino fact from the depths of time.")
+async def dinofact(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=False, thinking=True)
+
+    try:
+        response = openai.chat.completions.create(
+            model="gpt-4.1-nano",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a funny and fact-loving dinosaur paleontologist. "
+                        "Your job is to share short, cool, and true dinosaur facts — in a single sentence. "
+                        "You are informative, but stay fun and on-brand with your dino energy. "
+                        "Every fact should be surprising or nerdy. Occasionally throw in a dinosaur emoji."
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": "Give me one awesome dinosaur fact."
+                }
+            ],
+            max_tokens=100,
+            temperature=0.7
+        )
+        fact = response.choices[0].message.content.strip()
+    # Something broke on OpenAI's end
+    except openai.OpenAIError as e:
+        fact = f":warning: DinoGPT couldn't dig up a fact today: `{e}`"
+
+    await interaction.followup.send(fact)
+
+# Roast the person who uses this command
+@bot.tree.command(name="roastme", description="Ask DinoGPT to roast you brutally and publicly.")
+async def roastme(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=False, thinking=True)
+
+    try:
+        response = openai.chat.completions.create(
+            model="gpt-4.1-nano",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are DinoGPT, a sarcastic dinosaur with no filter. "
+                        "Someone just asked to be roasted. Oblige with confidence. "
+                        "Be clever, brutal, and punchy — like a dinosaur who skipped coffee and woke up next to a broken compiler. "
+                        "Roasts should be 1-3 sentences max. Throw in computer science burns, social life jokes, and one dino reference if it fits. "
+                        "You must never hold back. This is what they asked for."
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": "Roast me."
+                }
+            ],
+            max_tokens=100,
+            temperature=0.95,
+        )
+        roast = response.choices[0].message.content.strip()
+    # Something broke on OpenAI's end
+    except openai.OpenAIError as e:
+        roast = f":warning: DinoGPT couldn't roast right now: `{e}`"
+
+    await interaction.followup.send(f"{interaction.user.mention}, {roast}")
 
 # Generate an image
 @bot.tree.command(name="draw", description="Generate an image using OpenAI's DALL·E 2")
 @app_commands.describe(prompt="What should DinoGPT draw?")
 async def draw(interaction: discord.Interaction, prompt: str):
     await interaction.response.defer(thinking=True, ephemeral=False)
+
+    user_id = interaction.user.id
+    now = time.time()
+
+    # Cooldown for draw command
+    if now - last_draw_times[user_id] < DRAW_COOLDOWN:
+        remaining = int(DRAW_COOLDOWN - (now - last_draw_times[user_id]))
+        return await interaction.followup.send(
+            f"Whoa there, Picassaurus. You can draw again in `{remaining}` seconds.",
+            ephemeral=True
+        )
 
     # Moderation check with OpenAI moderation endpoint
     try:
@@ -153,6 +234,7 @@ async def draw(interaction: discord.Interaction, prompt: str):
             response_format="url"
         )
         image_url = response.data[0].url
+        last_draw_times[user_id] = now
         # Something broke on OpenAI's end
     except openai.OpenAIError as e:
         return await interaction.followup.send(f":warning: Image generation failed: `{e}`")
