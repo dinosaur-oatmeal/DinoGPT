@@ -1,12 +1,13 @@
-import os, logging, random
+import os
 import time
 import openai
 import discord
-from discord.ext import commands
 from discord import app_commands
+from discord import Embed, Interaction, SelectOption
+from discord.ext import commands
+from discord.ui import View, Select
 from dotenv import load_dotenv
-from discord import Embed
-from collections import defaultdict
+from collections import defaultdict, deque
 
 # Load API KEY
 load_dotenv()
@@ -27,6 +28,95 @@ OWNER_ID = int(os.getenv("OWNER_ID"))
 last_draw_times = defaultdict(float)
 DRAW_COOLDOWN = 30
 
+# Track the last 10 facts
+recent_facts = deque(maxlen=5)
+
+class ResourcesView(View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.add_item(ResourcesSelect())
+
+class ResourcesSelect(Select):
+    def __init__(self):
+        options = [
+            SelectOption(label="Math Clinic", value="math"),
+            SelectOption(label="The BugHouse (CSE)", value="bughouse"),
+            SelectOption(label="Writing Center", value="writing"),
+            SelectOption(label="Academic Success Center", value="success"),
+            SelectOption(label="Advising Center", value="advising"),
+            SelectOption(label="Testing Services", value="testing"),
+            SelectOption(label="Accessibility Center", value="access")
+        ]
+
+        super().__init__(placeholder="Choose a resource to learn more...",
+                         min_values=1, max_values=1, options=options)
+
+    # List of UTA Resources
+    async def callback(self, interaction: Interaction):
+        resource_details = {
+            "math": {
+                "title": "🧮 Math Clinic",
+                "desc": "Support for undergraduate math courses.",
+                "location": "Pickard Hall 325",
+                "hours": "Mon-Thu: 9am-8pm\nFri: 9am-12pm\nSun: 1pm-5pm",
+                "link": "https://www.uta.edu/academics/schools-colleges/science/departments/mathematics/lrc/uta-math-clinic"
+            },
+            "bughouse": {
+                "title": "🐞 The bugHouse (CSE)",
+                "desc": "Tutoring and review sessions for computer science.",
+                "location": "ERB 570",
+                "hours": "Mon-Fri: 10am-6pm",
+                "link": "https://www.uta.edu/academics/schools-colleges/engineering/academics/departments/cse/students/bughouse"
+            },
+            "writing": {
+                "title": "📖 Writing Center",
+                "desc": "Help with writing across all subjects.",
+                "location": "Central Library 411",
+                "hours": "See website for details",
+                "link": "https://www.uta.edu/owl/#"
+            },
+            "success": {
+                "title": "📚 Academic Success Center",
+                "desc": "Tutoring, PLTL, TRIO, IDEAS Center, and more.",
+                "location": "Ransom Hall 206",
+                "hours": "Check website for hours",
+                "link": "https://www.uta.edu/student-success/course-assistance"
+            },
+            "advising": {
+                "title": "👥 University Advising Center",
+                "desc": "Advising for first-year and undeclared students.",
+                "location": "Ransom Hall, 1st Floor",
+                "hours": "Mon-Fri: 8am-5pm",
+                "link": "https://www.uta.edu/student-success/advising/university-advising-center"
+            },
+            "testing": {
+                "title": "🧪 Academic Testing Services",
+                "desc": "Test proctoring and exam services.",
+                "location": "University Hall 004",
+                "hours": "Mon-Fri: 8am-5pm\nSat: 8am-4pm",
+                "link": "https://www.uta.edu/student-success/directory-academic-testing-services"
+            },
+            "access": {
+                "title": "🧑‍🦽 Accessibility & Resource Center",
+                "desc": "Accommodations and support for students with disabilities.",
+                "location": "University Hall 102",
+                "hours": "Mon-Fri: 8am-5pm",
+                "link": "https://www.uta.edu/student-affairs/sarcenter"
+            }
+        }
+
+        # Create an embed with data
+        data = resource_details[self.values[0]]
+        embed = Embed(title=data["title"], description=data["desc"], color=0x1E90FF)
+        embed.add_field(name="📍 Location", value=data["location"], inline=True)
+        embed.add_field(name="🕒 Hours", value=data["hours"], inline=True)
+        embed.add_field(name="🔗 Website", value=f"[Visit Site]({data['link']})", inline=False)
+        await interaction.response.edit_message(embed=embed, view=self.view)
+
+# Command to access resources
+@bot.tree.command(name="resources", description="Get help through UTA's academic resources")
+async def resources(interaction: discord.Interaction):
+    await interaction.response.send_message("Choose a resource below:", view=ResourcesView(), ephemeral=True)
 
 # Sync all slash commands on boot
 @bot.event
@@ -131,29 +221,42 @@ async def ask(interaction: discord.Interaction, prompt: str):
 async def dinofact(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=False, thinking=True)
 
+    fact = ""
+    max_tries = 5
+
     try:
-        response = openai.chat.completions.create(
-            model="gpt-4.1-nano",
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a funny and fact-loving dinosaur paleontologist. "
-                        "Your job is to share short, cool, and true dinosaur facts — in a single sentence. "
-                        "You are informative, but stay fun and on-brand with your dino energy. "
-                        "Every fact should be surprising or nerdy. Occasionally throw in a dinosaur emoji."
-                    )
-                },
-                {
-                    "role": "user",
-                    "content": "Give me one awesome dinosaur fact."
-                }
-            ],
-            max_tokens=100,
-            temperature=0.7
-        )
-        fact = response.choices[0].message.content.strip()
-    # Something broke on OpenAI's end
+        for _ in range(max_tries):
+            response = openai.chat.completions.create(
+                model="gpt-4.1-nano",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a funny and fact-loving dinosaur paleontologist. "
+                            "Your job is to share short, cool, and true dinosaur facts — in a single sentence. "
+                            "You are informative, but stay fun and on-brand with your dino energy. "
+                            "Every fact should be surprising or nerdy. Occasionally throw in a dinosaur emoji."
+                        )
+                    },
+                    {
+                        "role": "user",
+                        "content": "Give me one awesome dinosaur fact."
+                    }
+                ],
+                max_tokens=100,
+                temperature=0.7
+            )
+            candidate = response.choices[0].message.content.strip()
+
+            # New dino face
+            if candidate not in recent_facts:
+                fact = candidate
+                recent_facts.append(fact)
+                break
+        
+        # No new dino fact
+        else:
+            fact = candidate if candidate else ":warning: Couldn't fetch a new dino fact."
     except openai.OpenAIError as e:
         fact = f":warning: DinoGPT couldn't dig up a fact today: `{e}`"
 
