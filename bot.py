@@ -175,12 +175,19 @@ async def gentle(interaction: discord.Interaction):
         await interaction.response.send_message("🦖 Back to roasting. Gentle mode disabled globally.", ephemeral=False)
 
 # Ask DinoGPT a question
-@bot.tree.command(name="ask", description="Ask GPT-4.1-nano anything")
+@bot.tree.command(name="ask", description="Ask DinoGPT anything!")
 @only_in_allowed()
-@app_commands.describe(prompt="Your question")
-async def ask(interaction: discord.Interaction, prompt: str):
+@app_commands.describe(prompt="Your question", model="Choose model: GPT-4.1 (default) or o3-mini")
+@app_commands.choices(
+    model=[
+        app_commands.Choice(name="GPT-4.1", value="gpt-4.1"),
+        app_commands.Choice(name="o3-mini",     value="o3-mini"),
+    ]
+)
+async def ask(interaction: discord.Interaction, prompt: str, model: app_commands.Choice[str] = None):
     await interaction.response.defer(thinking=True, ephemeral=False)
     user_id = interaction.user.id
+    model_name = model.value if model else "gpt-4.1"
 
     # Moderation check with OpenAI moderation endpoint
     try:
@@ -224,10 +231,10 @@ async def ask(interaction: discord.Interaction, prompt: str):
     try:
         response = openai.chat.completions.create(
             # Cheap model!
-            model="gpt-4.1-nano",
+            model=model_name,
             messages=messages,
             # Output should be limited
-            max_tokens=256,
+            max_tokens=1024,
             # Let the model go wild
             temperature=0.85,
         )
