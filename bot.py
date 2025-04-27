@@ -156,13 +156,11 @@ class ResourcesSelect(Select):
 
 # Command to access resources
 @bot.tree.command(name="resources", description="Get help through UTA's academic resources")
-@only_in_allowed()
 async def resources(interaction: discord.Interaction):
     await interaction.response.send_message("Choose a resource below:", view=ResourcesView(), ephemeral=True)
 
 # Toggle between kind and mean mode
 @bot.tree.command(name="gentle", description="DinoGPT loves its creator")
-@only_in_allowed()
 async def gentle(interaction: discord.Interaction):
     # Only creator of the bot (me) can use it
     if interaction.user.id != OWNER_ID:
@@ -181,7 +179,6 @@ async def gentle(interaction: discord.Interaction):
 
 # Ask DinoGPT a question
 @bot.tree.command(name="ask", description="Ask DinoGPT anything!")
-@only_in_allowed()
 @app_commands.describe(prompt="Your question", model="Choose model: GPT-4.1 (default) or o3-mini")
 @app_commands.choices(
     model=[
@@ -267,7 +264,6 @@ async def ask(interaction: discord.Interaction, prompt: str, model: app_commands
 
 # DinoGPT will say a dino fact that's hopefully accurate
 @bot.tree.command(name="dinofact", description="Summon a fresh, fossil-fueled dino fact from the depths of time.")
-@only_in_allowed()
 async def dinofact(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=False, thinking=True)
 
@@ -314,7 +310,6 @@ async def dinofact(interaction: discord.Interaction):
 
 # Roast the person who uses this command
 @bot.tree.command(name="roastme", description="Ask DinoGPT to roast you brutally and publicly.")
-@only_in_allowed()
 async def roastme(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=False, thinking=True)
 
@@ -349,7 +344,6 @@ async def roastme(interaction: discord.Interaction):
 
 # Generate an image
 @bot.tree.command(name="draw", description="Generate an image using OpenAI's DALL·E 2")
-@only_in_allowed()
 @app_commands.describe(prompt="What should DinoGPT draw?")
 async def draw(interaction: discord.Interaction, prompt: str):
     await interaction.response.defer(thinking=True, ephemeral=False)
