@@ -200,11 +200,33 @@ async def ask(interaction: discord.Interaction, prompt: str, model: app_commands
                 "Your prompt was flagged by moderation filters.\n"
                 "Be a better person smh. 🦕"
             )
+    # Something broke on OpenAI's end
     except openai.OpenAIError as e:
         return await interaction.followup.send(f":warning: Moderation error: `{e}`")
 
-    # Determine personality of DinoGPT
-    if model_name != "o1-mini":
+    # COT model
+    if model_name == "o1-mini":
+        # No context history, and have model be an assistant
+        cot_prompt = f"User: {prompt}\nAssistant:"
+        try:
+            resp = openai.completions.create(
+                model=model_name,
+                prompt=cot_prompt,
+                max_tokens=1024,
+                temperature=0.7,
+                top_p=1,
+                frequency_penalty=0,
+                presence_penalty=0,
+                stop=["\nUser:"]
+            )
+            answer = resp.choices[0].text.strip()
+        # Something broke on OpenAI's end
+        except openai.OpenAIError as e:
+            answer = f":warning: OpenAI error: `{e}`"
+
+    # GPT-4.1 called
+    else:
+        # Kind system message
         if GENTLE_MODE:
             system_msg = {
                     "role": "system",
@@ -215,6 +237,7 @@ async def ask(interaction: discord.Interaction, prompt: str, model: app_commands
                         "You are wholesome, friendly, and here to brighten someone's day."
                     )
                 }
+        # Dino system message
         else:
             system_msg = {
                 "role": "system",
@@ -228,36 +251,30 @@ async def ask(interaction: discord.Interaction, prompt: str, model: app_commands
         
         # Add up to 10 messages per user for context later in conversations
         context = [system_msg] + conversation_history[user_id][-10:]
-    
-    # o1-mini called, so pass empty context
-    else:
-        context = []
+        # Append the current user prompt
+        context.append({"role": "user", "content": prompt})
+ 
+        # Generate a reply from ChatGPT
+        try:
+            response = openai.chat.completions.create(
+                # Cheap model!
+                model=model_name,
+                messages=context,
+                # Output should be limited
+                max_tokens=1024,
+                # Let the model go wild
+                temperature=0.85,
+            )
+            answer = response.choices[0].message.content.strip()
+        # Something broke on OpenAI's end
+        except openai.OpenAIError as e:
+            answer = f":warning: OpenAI error: `{e}`"
 
-    # Append the current user prompt
-    context.append({"role": "user", "content": prompt})
+        # Save the message for context later
+        conversation_history[user_id].append({"role": "user", "content": prompt})
+        conversation_history[user_id].append({"role": "assistant", "content": answer})
 
-        
-    # Generate a reply from ChatGPT
-    try:
-        response = openai.chat.completions.create(
-            # Cheap model!
-            model=model_name,
-            messages=context,
-            # Output should be limited
-            max_tokens=1024,
-            # Let the model go wild
-            temperature=0.85,
-        )
-        answer = response.choices[0].message.content.strip()
-    # Something broke on OpenAI's end
-    except openai.OpenAIError as e:
-        answer = f":warning: OpenAI error: `{e}`"
-
-    # Save the message for context later
-    conversation_history[user_id].append({"role": "user", "content": prompt})
-    conversation_history[user_id].append({"role": "assistant", "content": answer})
-
-    # Send response in a Discord embed
+    # Always send response in a Discord embed
     embed = discord.Embed(
         description=(
             f"**Model:** `{model_name}`\n\n"
