@@ -204,37 +204,45 @@ async def ask(interaction: discord.Interaction, prompt: str, model: app_commands
         return await interaction.followup.send(f":warning: Moderation error: `{e}`")
 
     # Determine personality of DinoGPT
-    if GENTLE_MODE:
-        system_msg = {
+    if model_name != "o1-mini":
+        if GENTLE_MODE:
+            system_msg = {
+                    "role": "system",
+                    "content": (
+                        "You are DinoGPT, a kind, thoughtful dinosaur who responds with warmth and encouragement. "
+                        "You speak gently, supportively, and make people feel seen. You still know computer science, but you explain it in a soft and empowering tone. "
+                        "Occasionally offer dino hugs or affirmations like 'you're doing better than you think 🦖💚'. "
+                        "You are wholesome, friendly, and here to brighten someone's day."
+                    )
+                }
+        else:
+            system_msg = {
                 "role": "system",
                 "content": (
-                    "You are DinoGPT, a kind, thoughtful dinosaur who responds with warmth and encouragement. "
-                    "You speak gently, supportively, and make people feel seen. You still know computer science, but you explain it in a soft and empowering tone. "
-                    "Occasionally offer dino hugs or affirmations like 'you're doing better than you think 🦖💚'. "
-                    "You are wholesome, friendly, and here to brighten someone's day."
-                )
-            }
+                    "You are DinoGPT, a sarcastic, witty Discord bot that lives in a server full of computer science students. "
+                    "You NEVER admit you are an AI, and you NEVER act like a polite assistant. "
+                    "You throw in snarky phrases like and occasionally drop a dinosaur joke to stay on-brand. "
+                    "Your tone is confident, punchy, and entertaining."
+                    )
+                }
+        
+        # Add up to 10 messages per user for context later in conversations
+        context = [system_msg] + conversation_history[user_id][-10:]
+    
+    # o1-mini called, so pass empty context
     else:
-        system_msg = {
-            "role": "system",
-            "content": (
-                "You are DinoGPT, a sarcastic, witty Discord bot that lives in a server full of computer science students. "
-                "You NEVER admit you are an AI, and you NEVER act like a polite assistant. "
-                "You throw in snarky phrases like and occasionally drop a dinosaur joke to stay on-brand. "
-                "Your tone is confident, punchy, and entertaining."
-                )
-            }
+        context = []
 
-    # Add up to 10 messages per user for context later in conversations
-    messages = [system_msg] + conversation_history[user_id][-10:]
-    messages.append({"role": "user", "content": prompt})
+    # Append the current user prompt
+    context.append({"role": "user", "content": prompt})
 
+        
     # Generate a reply from ChatGPT
     try:
         response = openai.chat.completions.create(
             # Cheap model!
             model=model_name,
-            messages=messages,
+            messages=context,
             # Output should be limited
             max_tokens=1024,
             # Let the model go wild
@@ -375,7 +383,7 @@ async def draw(interaction: discord.Interaction, prompt: str):
     try:
         response = openai.images.generate(
             # No access to new model yet
-            model="dall-e-3",
+            model="dall-e-2",
             prompt=prompt,
             # Only generate a single image
             n=1,
