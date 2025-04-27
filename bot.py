@@ -209,7 +209,7 @@ async def ask(interaction: discord.Interaction, prompt: str, model: app_commands
         # No context history, and have model be an assistant
         cot_prompt = f"User: {prompt}\nAssistant:"
         try:
-            resp = openai.completions.create(
+            resp = openai.chat.completions.create(
                 model=model_name,
                 prompt=cot_prompt,
                 max_tokens=1024,
