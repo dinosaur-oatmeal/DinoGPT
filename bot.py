@@ -2,9 +2,10 @@ import os
 import time
 import openai
 import discord
+import datetime
 from discord import app_commands
 from discord import Embed, Interaction, SelectOption
-from discord.ext import commands
+from discord.ext import commands, tasks
 from discord.ui import View, Select
 from dotenv import load_dotenv
 from collections import defaultdict, deque
@@ -36,6 +37,11 @@ DRAW_COOLDOWN = 30
 # Track the last 10 facts
 recent_facts = deque(maxlen=5)
 
+# Reset the conversation history daily
+@tasks.loop(time=datetime.time(hour=4, minute=0))
+async def reset_conversation_history():
+    conversation_history.clear()
+
 # Leave all guilds that I don't want DinoGPT in
 @bot.event
 async def on_guild_join(guild):
@@ -60,12 +66,16 @@ def only_in_allowed():
 # Sync all slash commands on boot
 @bot.event
 async def on_ready():
+    # Start daily reset task
+    if not reset_conversation_history.is_running():
+        reset_conversation_history.start()
+
     for guild_id in ALLOWED_GUILD_IDS:
         try:
             await bot.tree.sync(guild=discord.Object(id=guild_id))
-            print(f"✅ Synced to guild: {guild_id}")
+            print(f"Synced to guild: {guild_id}")
         except Exception as e:
-            print(f"❌ Failed to sync to guild {guild_id}: {e}")
+            print(f"Failed to sync to guild {guild_id}: {e}")
 
 class ResourcesView(View):
     def __init__(self):
