@@ -179,11 +179,11 @@ async def gentle(interaction: discord.Interaction):
 
 # Ask DinoGPT a question
 @bot.tree.command(name="ask", description="Ask DinoGPT anything!")
-@app_commands.describe(prompt="Your question", model="Choose model: GPT-4.1 (default) or o3-mini")
+@app_commands.describe(prompt="Your question", model="Choose model: GPT-4.1 (default) or o1-mini")
 @app_commands.choices(
     model=[
         app_commands.Choice(name="gpt-4.1", value="gpt-4.1"),
-        app_commands.Choice(name="o3-mini",     value="o3-mini"),
+        app_commands.Choice(name="o1-mini",     value="o1-mini"),
     ]
 )
 async def ask(interaction: discord.Interaction, prompt: str, model: app_commands.Choice[str] = None):
@@ -375,7 +375,7 @@ async def draw(interaction: discord.Interaction, prompt: str):
     try:
         response = openai.images.generate(
             # No access to new model yet
-            model="dall-e-2",
+            model="dall-e-3",
             prompt=prompt,
             # Only generate a single image
             n=1,
