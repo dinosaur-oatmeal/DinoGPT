@@ -27,8 +27,7 @@ conversation_history = defaultdict(list)
 GENTLE_MODE = False
 OWNER_ID = int(os.getenv("OWNER_ID"))
 
-# Allowed guilds to use DinoGPT
-ALLOWED_GUILD_IDS = set(int(x) for x in os.getenv("ALLOWED_GUILD_IDS", "").split(",") if x)
+MAX_GUILDS = 2
 
 # Draw cooldown
 last_draw_times = defaultdict(float)
@@ -42,12 +41,6 @@ recent_facts = deque(maxlen=5)
 async def reset_conversation_history():
     conversation_history.clear()
 
-# Leave all guilds that I don't want DinoGPT in
-@bot.event
-async def on_guild_join(guild):
-    if guild.id not in ALLOWED_GUILD_IDS:
-        await guild.leave()
-
 # Block DMs to DinoGPT
 @bot.event
 async def on_message(message):
@@ -55,13 +48,19 @@ async def on_message(message):
         return
     await bot.process_commands(message)
 
-# Restrict slash commands outside proper guilds
-def only_in_allowed():
-    def predicate(interaction: discord.Interaction):
-        if interaction.guild_id not in ALLOWED_GUILD_IDS:
-            raise app_commands.CheckFailure("I'm not allowed to run here.")
-        return True
-    return app_commands.check(predicate)
+# Limit the bot tov a max number of guilds
+@bot.event
+async def on_guild_join(guild):
+    # Leave new guilds once limit reached
+    if len(bot.guilds) > MAX_GUILDS:
+        # Notify me if it's been invited to new guilds
+        owner = bot.get_user(OWNER_ID)
+        if owner:
+            await owner.send(
+                f"I was invited to `{guild.name}` ({guild.id}) and am leaving"
+            )
+        # Leave the new guild
+        await guild.leave()
 
 # Sync all slash commands on boot
 @bot.event
@@ -70,12 +69,8 @@ async def on_ready():
     if not reset_conversation_history.is_running():
         reset_conversation_history.start()
 
-    for guild_id in ALLOWED_GUILD_IDS:
-        try:
-            await bot.tree.sync(guild=discord.Object(id=guild_id))
-            print(f"Synced to guild: {guild_id}")
-        except Exception as e:
-            print(f"Failed to sync to guild {guild_id}: {e}")
+    await bot.tree.sync()
+    print(f"Logged in as {bot.user} (ID: {bot.user.id})")
 
 class ResourcesView(View):
     def __init__(self):
@@ -190,7 +185,7 @@ async def gentle(interaction: discord.Interaction):
 @app_commands.describe(prompt="Your question", model="Choose model: GPT-4.1 (default) or o3-mini")
 @app_commands.choices(
     model=[
-        app_commands.Choice(name="GPT-4.1", value="gpt-4.1"),
+        app_commands.Choice(name="gpt-4.1", value="gpt-4.1"),
         app_commands.Choice(name="o3-mini",     value="o3-mini"),
     ]
 )
@@ -259,7 +254,11 @@ async def ask(interaction: discord.Interaction, prompt: str, model: app_commands
 
     # Send response in a Discord embed
     embed = discord.Embed(
-        description=f"Prompt: {prompt}\n\n**Response:** {answer}",
+        description=(
+            f"**Model:** `{model_name}`\n\n"
+            f"**Prompt:** {prompt}\n\n"
+            f"**Response:** {answer}"
+        ),
         color=0x242429
     )
     # Set footer to user who called the model (good for logging)
