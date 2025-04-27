@@ -200,33 +200,26 @@ async def ask(interaction: discord.Interaction, prompt: str, model: app_commands
                 "Your prompt was flagged by moderation filters.\n"
                 "Be a better person smh. 🦕"
             )
-    # Something broke on OpenAI's end
     except openai.OpenAIError as e:
         return await interaction.followup.send(f":warning: Moderation error: `{e}`")
 
     # COT model
     if model_name == "o1-mini":
-        # No context history, and have model be an assistant
-        cot_prompt = f"User: {prompt}\nAssistant:"
+        messages = [{"role": "user", "content": prompt}]
         try:
-            resp = openai.chat.completions.create(
+            response = openai.chat.completions.create(
                 model=model_name,
-                prompt=cot_prompt,
-                max_tokens=1024,
-                temperature=0.7,
-                top_p=1,
-                frequency_penalty=0,
-                presence_penalty=0,
-                stop=["\nUser:"]
+                messages=messages,
+                max_completion_tokens=1024
             )
-            answer = resp.choices[0].text.strip()
+            answer = response.choices[0].message.content.strip()
         # Something broke on OpenAI's end
         except openai.OpenAIError as e:
             answer = f":warning: OpenAI error: `{e}`"
 
-    # GPT-4.1 called
+    # Regular chat model
     else:
-        # Kind system message
+        # Determine personality of DinoGPT
         if GENTLE_MODE:
             system_msg = {
                     "role": "system",
@@ -237,7 +230,6 @@ async def ask(interaction: discord.Interaction, prompt: str, model: app_commands
                         "You are wholesome, friendly, and here to brighten someone's day."
                     )
                 }
-        # Dino system message
         else:
             system_msg = {
                 "role": "system",
@@ -250,10 +242,11 @@ async def ask(interaction: discord.Interaction, prompt: str, model: app_commands
                 }
         
         # Add up to 10 messages per user for context later in conversations
+        if user_id not in conversation_history:
+            conversation_history[user_id] = []
         context = [system_msg] + conversation_history[user_id][-10:]
-        # Append the current user prompt
         context.append({"role": "user", "content": prompt})
- 
+        
         # Generate a reply from ChatGPT
         try:
             response = openai.chat.completions.create(
@@ -269,10 +262,6 @@ async def ask(interaction: discord.Interaction, prompt: str, model: app_commands
         # Something broke on OpenAI's end
         except openai.OpenAIError as e:
             answer = f":warning: OpenAI error: `{e}`"
-
-        # Save the message for context later
-        conversation_history[user_id].append({"role": "user", "content": prompt})
-        conversation_history[user_id].append({"role": "assistant", "content": answer})
 
     # Always send response in a Discord embed
     embed = discord.Embed(
