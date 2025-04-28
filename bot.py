@@ -200,6 +200,7 @@ async def ask(interaction: discord.Interaction, prompt: str, model: app_commands
                 "Your prompt was flagged by moderation filters.\n"
                 "Be a better person smh. 🦕"
             )
+    # Something broke on OpenAI's end
     except openai.OpenAIError as e:
         return await interaction.followup.send(f":warning: Moderation error: `{e}`")
 
@@ -210,7 +211,8 @@ async def ask(interaction: discord.Interaction, prompt: str, model: app_commands
             response = openai.chat.completions.create(
                 model=model_name,
                 messages=messages,
-                max_completion_tokens=1024
+                max_tokens=1024,
+                temperature=0.7,
             )
             answer = response.choices[0].message.content.strip()
         # Something broke on OpenAI's end
