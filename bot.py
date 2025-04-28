@@ -179,7 +179,7 @@ async def gentle(interaction: discord.Interaction):
 
 # Ask DinoGPT a question
 @bot.tree.command(name="ask", description="Ask DinoGPT anything!")
-@app_commands.describe(prompt="Your question", model="gpt-4.1")
+@app_commands.describe(prompt="Your question")
 async def ask(interaction: discord.Interaction, prompt: str):
     await interaction.response.defer(thinking=True, ephemeral=False)
     user_id = interaction.user.id
