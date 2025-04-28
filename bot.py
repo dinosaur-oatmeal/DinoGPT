@@ -206,13 +206,11 @@ async def ask(interaction: discord.Interaction, prompt: str, model: app_commands
 
     # COT model
     if model_name == "o1-mini":
-        messages = [{"role": "user", "content": prompt}]
         try:
             response = openai.chat.completions.create(
                 model=model_name,
-                messages=messages,
-                max_tokens=1024,
-                temperature=0.7,
+                messages=[{"role": "user", "content": prompt}],
+                max_completion_tokens=1024
             )
             answer = response.choices[0].message.content.strip()
         # Something broke on OpenAI's end
@@ -243,10 +241,10 @@ async def ask(interaction: discord.Interaction, prompt: str, model: app_commands
                     )
                 }
         
-        # Add up to 10 messages per user for context later in conversations
+        # Add up to 5 messages per user for context later in conversations
         if user_id not in conversation_history:
             conversation_history[user_id] = []
-        context = [system_msg] + conversation_history[user_id][-10:]
+        context = [system_msg] + conversation_history[user_id][-5:]
         context.append({"role": "user", "content": prompt})
         
         # Generate a reply from ChatGPT
@@ -261,9 +259,14 @@ async def ask(interaction: discord.Interaction, prompt: str, model: app_commands
                 temperature=0.85,
             )
             answer = response.choices[0].message.content.strip()
+
+            # Add answer from model to conversation history
+            conversation_history[user_id].append({"role": "assistant", "content": answer})
+
         # Something broke on OpenAI's end
         except openai.OpenAIError as e:
             answer = f":warning: OpenAI error: `{e}`"
+
 
     # Always send response in a Discord embed
     embed = discord.Embed(
