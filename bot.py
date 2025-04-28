@@ -180,9 +180,11 @@ async def gentle(interaction: discord.Interaction):
 # Ask DinoGPT a question
 @bot.tree.command(name="ask", description="Ask DinoGPT anything!")
 @app_commands.describe(prompt="Your question", model="gpt-4.1")
-async def ask(interaction: discord.Interaction, prompt: str, model: app_commands.Choice[str] = None):
+async def ask(interaction: discord.Interaction, prompt: str):
     await interaction.response.defer(thinking=True, ephemeral=False)
     user_id = interaction.user.id
+
+    model_name = "gpt-4.1"
 
     # Moderation check with OpenAI moderation endpoint
     try:
@@ -228,8 +230,8 @@ async def ask(interaction: discord.Interaction, prompt: str, model: app_commands
     # Generate a reply from ChatGPT
     try:
         response = openai.chat.completions.create(
-            # Cheap model!
-            model=model,
+            # Chat model!
+            model=model_name,
             messages=context,
             # Output should be limited
             max_tokens=1024,
@@ -249,7 +251,7 @@ async def ask(interaction: discord.Interaction, prompt: str, model: app_commands
     # Always send response in a Discord embed
     embed = discord.Embed(
         description=(
-            f"**Model:** `{model}`\n\n"
+            f"**Model:** `{model_name}`\n\n"
             f"**Prompt:** {prompt}\n\n"
             f"**Response:** {answer}"
         ),
