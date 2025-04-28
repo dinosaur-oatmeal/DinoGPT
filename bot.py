@@ -20,6 +20,9 @@ intents = discord.Intents.default()
 # Required by not used (/command)
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+# Conversation history for different users
+conversation_history = defaultdict(list)
+
 # Gentle mode for everyone
 GENTLE_MODE = False
 OWNER_ID = int(os.getenv("OWNER_ID"))
@@ -32,6 +35,11 @@ DRAW_COOLDOWN = 30
 
 # Track the last 10 facts
 recent_facts = deque(maxlen=5)
+
+# Reset the conversation history daily
+@tasks.loop(time=datetime.time(hour=4, minute=0))
+async def reset_conversation_history():
+    conversation_history.clear()
 
 # Block DMs to DinoGPT
 @bot.event
@@ -57,6 +65,10 @@ async def on_guild_join(guild):
 # Sync all slash commands on boot
 @bot.event
 async def on_ready():
+    # Start daily reset task
+    if not reset_conversation_history.is_running():
+        reset_conversation_history.start()
+
     await bot.tree.sync()
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
 
@@ -167,17 +179,10 @@ async def gentle(interaction: discord.Interaction):
 
 # Ask DinoGPT a question
 @bot.tree.command(name="ask", description="Ask DinoGPT anything!")
-@app_commands.describe(prompt="Your question", model="Choose model: GPT-4.1 (default) or o1-mini")
-@app_commands.choices(
-    model=[
-        app_commands.Choice(name="gpt-4.1", value="gpt-4.1"),
-        app_commands.Choice(name="o1-mini",     value="o1-mini"),
-    ]
-)
+@app_commands.describe(prompt="Your question", model="gpt-4.1")
 async def ask(interaction: discord.Interaction, prompt: str, model: app_commands.Choice[str] = None):
     await interaction.response.defer(thinking=True, ephemeral=False)
     user_id = interaction.user.id
-    model_name = model.value if model else "gpt-4.1"
 
     # Moderation check with OpenAI moderation endpoint
     try:
@@ -191,65 +196,60 @@ async def ask(interaction: discord.Interaction, prompt: str, model: app_commands
     # Something broke on OpenAI's end
     except openai.OpenAIError as e:
         return await interaction.followup.send(f":warning: Moderation error: `{e}`")
-
-    # COT model
-    if model_name == "o1-mini":
-        try:
-            response = openai.chat.completions.create(
-                model=model_name,
-                messages=[{"role": "user", "content": prompt}],
-                max_completion_tokens=1024
-            )
-            answer = response.choices[0].message.content.strip()
-        # Something broke on OpenAI's end
-        except openai.OpenAIError as e:
-            answer = f":warning: OpenAI error: `{e}`"
-
-    # Regular chat model
-    else:
-        # Determine personality of DinoGPT
-        if GENTLE_MODE:
-            system_msg = {
-                    "role": "system",
-                    "content": (
-                        "You are DinoGPT, a kind, thoughtful dinosaur who responds with warmth and encouragement. "
-                        "You speak gently, supportively, and make people feel seen. You still know computer science, but you explain it in a soft and empowering tone. "
-                        "Occasionally offer dino hugs or affirmations like 'you're doing better than you think 🦖💚'. "
-                        "You are wholesome, friendly, and here to brighten someone's day."
-                    )
-                }
-        else:
-            system_msg = {
+    
+    # Determine personality of DinoGPT
+    if GENTLE_MODE:
+        system_msg = {
                 "role": "system",
                 "content": (
-                    "You are DinoGPT, a sarcastic, witty Discord bot that lives in a server full of computer science students. "
-                    "You NEVER admit you are an AI, and you NEVER act like a polite assistant. "
-                    "You throw in snarky phrases like and occasionally drop a dinosaur joke to stay on-brand. "
-                    "Your tone is confident, punchy, and entertaining."
-                    )
-                }
-        
-        # Generate a reply from ChatGPT
-        try:
-            response = openai.chat.completions.create(
-                # Cheap model!
-                model=model_name,
-                messages=[system_msg, {"role": "user", "content": prompt}],
-                # Output should be limited
-                max_tokens=1024,
-                # Let the model go wild
-                temperature=0.85,
-            )
-            answer = response.choices[0].message.content.strip()
-        # Something broke on OpenAI's end
-        except openai.OpenAIError as e:
-            answer = f":warning: OpenAI error: `{e}`"
+                    "You are DinoGPT, a kind, thoughtful dinosaur who responds with warmth and encouragement. "
+                    "You speak gently, supportively, and make people feel seen. You still know computer science, but you explain it in a soft and empowering tone. "
+                    "Occasionally offer dino hugs or affirmations like 'you're doing better than you think 🦖💚'. "
+                    "You are wholesome, friendly, and here to brighten someone's day."
+                )
+            }
+    else:
+        system_msg = {
+            "role": "system",
+            "content": (
+                "You are DinoGPT, a sarcastic, witty Discord bot that lives in a server full of computer science students. "
+                "You NEVER admit you are an AI, and you NEVER act like a polite assistant. "
+                "You throw in snarky phrases like and occasionally drop a dinosaur joke to stay on-brand. "
+                "Your tone is confident, punchy, and entertaining."
+                )
+            }
+    
+    # Add up to 5 messages per user for context later in conversations
+    if user_id not in conversation_history:
+        conversation_history[user_id] = []
+    context = [system_msg] + conversation_history[user_id][-5:]
+    context.append({"role": "user", "content": prompt})
+    
+    # Generate a reply from ChatGPT
+    try:
+        response = openai.chat.completions.create(
+            # Cheap model!
+            model=model,
+            messages=context,
+            # Output should be limited
+            max_tokens=1024,
+            # Let the model go wild
+            temperature=0.85,
+        )
+        answer = response.choices[0].message.content.strip()
+
+        # Add answer from model to conversation history
+        conversation_history[user_id].append({"role": "assistant", "content": answer})
+
+    # Something broke on OpenAI's end
+    except openai.OpenAIError as e:
+        answer = f":warning: OpenAI error: `{e}`"
 
 
     # Always send response in a Discord embed
     embed = discord.Embed(
         description=(
-            f"**Model:** `{model_name}`\n\n"
+            f"**Model:** `{model}`\n\n"
             f"**Prompt:** {prompt}\n\n"
             f"**Response:** {answer}"
         ),
