@@ -20,9 +20,6 @@ intents = discord.Intents.default()
 # Required by not used (/command)
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Conversation history for different users
-conversation_history = defaultdict(list)
-
 # Gentle mode for everyone
 GENTLE_MODE = False
 OWNER_ID = int(os.getenv("OWNER_ID"))
@@ -35,11 +32,6 @@ DRAW_COOLDOWN = 30
 
 # Track the last 10 facts
 recent_facts = deque(maxlen=5)
-
-# Reset the conversation history daily
-@tasks.loop(time=datetime.time(hour=4, minute=0))
-async def reset_conversation_history():
-    conversation_history.clear()
 
 # Block DMs to DinoGPT
 @bot.event
@@ -65,10 +57,6 @@ async def on_guild_join(guild):
 # Sync all slash commands on boot
 @bot.event
 async def on_ready():
-    # Start daily reset task
-    if not reset_conversation_history.is_running():
-        reset_conversation_history.start()
-
     await bot.tree.sync()
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
 
@@ -241,28 +229,18 @@ async def ask(interaction: discord.Interaction, prompt: str, model: app_commands
                     )
                 }
         
-        # Add up to 5 messages per user for context later in conversations
-        if user_id not in conversation_history:
-            conversation_history[user_id] = []
-        context = [system_msg] + conversation_history[user_id][-5:]
-        context.append({"role": "user", "content": prompt})
-        
         # Generate a reply from ChatGPT
         try:
             response = openai.chat.completions.create(
                 # Cheap model!
                 model=model_name,
-                messages=context,
+                messages=[system_msg, {"role": "user", "content": prompt}],
                 # Output should be limited
                 max_tokens=1024,
                 # Let the model go wild
                 temperature=0.85,
             )
             answer = response.choices[0].message.content.strip()
-
-            # Add answer from model to conversation history
-            conversation_history[user_id].append({"role": "assistant", "content": answer})
-
         # Something broke on OpenAI's end
         except openai.OpenAIError as e:
             answer = f":warning: OpenAI error: `{e}`"
