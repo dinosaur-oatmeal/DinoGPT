@@ -34,7 +34,7 @@ It uses:
 1. **Clone this repo:**
 
    ```bash
-   git clone https://github.com/yourusername/dinogpt.git
+   git clone https://github.com/dinosaur-oatmeal/dinogpt.git
    cd dinogpt
    ```
 
