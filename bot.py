@@ -3,6 +3,7 @@ import time
 import openai
 import discord
 import datetime
+import asyncio
 from openai import OpenAI
 from typing import Optional
 from discord import app_commands
@@ -33,10 +34,10 @@ MAX_GUILDS = 2
 last_draw_times = defaultdict(float)
 DRAW_COOLDOWN = 30
 
-# Track the last 5 facts
+# Track the last 5 dino facts
 recent_facts = deque(maxlen=5)
 
-# Reset the conversation history daily
+# Reset conversation history daily
 @tasks.loop(time=datetime.time(hour=4, minute=0))
 async def reset_conversation_history():
     conversation_history.clear()
@@ -48,18 +49,23 @@ async def on_message(message):
         return
     await bot.process_commands(message)
 
-# Limit the bot to max number of guilds
+# Limit bot to max number of guilds
 @bot.event
 async def on_guild_join(guild):
     # Leave new guilds once limit reached
     if len(bot.guilds) > MAX_GUILDS:
-        # Notify me if it's been invited to new guilds
-        owner = bot.get_user(OWNER_ID)
-        if owner:
-            await owner.send(
-                f"I was invited to `{guild.name}` ({guild.id}) and am leaving"
-            )
+        # Alert owner (me) of the guild it was invited to
+        try:
+            owner = await bot.fetch_user(OWNER_ID)
+            if owner:
+                await owner.send(
+                    f"I was invited to\nServer Name: `{guild.name}`\nServer ID: `{guild.id}`\n I am now leaving"
+                )
+        except Exception as e:
+            print(f"Failed to DM owner: {e}")
+
         # Leave the new guild
+        await asyncio.sleep(1)
         await guild.leave()
 
 # Sync all slash commands on boot
@@ -177,6 +183,13 @@ async def ask(
     prompt: str,
     model: Optional[app_commands.Choice[str]] = None
 ):
+    # Command only works in server
+    if interaction.guild is None:
+        return await interaction.response.send_message(
+            "Sorry, I don't respond to direct messages. Please use me in a server! 🦖",
+            ephemeral=True
+        )
+    
     await interaction.response.defer(thinking=True, ephemeral=False)
     user_id = interaction.user.id
 
@@ -198,6 +211,7 @@ async def ask(
     
      # Generate DinoGPT reply
     try:
+        # o1-mini
         if model_name == "o1-mini":
             messages = [
                 {
@@ -218,6 +232,7 @@ async def ask(
             )
             answer = response.choices[0].message.content.strip()
         
+        # GPT-4.1
         else:
             system_msg = {
                 "role": "system",
@@ -238,19 +253,18 @@ async def ask(
             context.append({"role": "user", "content": prompt})
 
             response = client.chat.completions.create(
-                model=model_name,
+                model="gpt-4.1",
                 messages=context,
                 max_tokens=2048,
                 temperature=0.85,
             )
             answer = response.choices[0].message.content.strip()
 
-            # Update history only for chat models
+            # Update history for GPT-4.1
             conversation_history[user_id].append({"role": "assistant", "content": answer})
 
     except Exception as e:
         answer = f":warning: OpenAI error: `{e}`"
-
 
     # Always send response in a Discord embed
     embed = discord.Embed(
@@ -268,6 +282,13 @@ async def ask(
 # DinoGPT will say a dino fact that's hopefully accurate
 @bot.tree.command(name="dinofact", description="Summon a fresh, fossil-fueled dino fact from the depths of time.")
 async def dinofact(interaction: discord.Interaction):
+    # Command only works in server
+    if interaction.guild is None:
+        return await interaction.response.send_message(
+            "Sorry, I don't respond to direct messages. Please use me in a server! 🦖",
+            ephemeral=True
+        )
+    
     await interaction.response.defer(ephemeral=False, thinking=True)
 
     fact = ""
@@ -297,7 +318,7 @@ async def dinofact(interaction: discord.Interaction):
             )
             candidate = response.choices[0].message.content.strip()
 
-            # New dino face
+            # New dino fact
             if candidate not in recent_facts:
                 fact = candidate
                 recent_facts.append(fact)
@@ -314,6 +335,13 @@ async def dinofact(interaction: discord.Interaction):
 # Roast the person who uses this command
 @bot.tree.command(name="roastme", description="Ask DinoGPT to roast you brutally and publicly.")
 async def roastme(interaction: discord.Interaction):
+    # Command only works in server
+    if interaction.guild is None:
+        return await interaction.response.send_message(
+            "Sorry, I don't respond to direct messages. Please use me in a server! 🦖",
+            ephemeral=True
+        )
+    
     await interaction.response.defer(ephemeral=False, thinking=True)
 
     try:
@@ -349,6 +377,13 @@ async def roastme(interaction: discord.Interaction):
 @bot.tree.command(name="draw", description="Generate an image using OpenAI's DALL·E 2")
 @app_commands.describe(prompt="What should DinoGPT draw?")
 async def draw(interaction: discord.Interaction, prompt: str):
+    # Command only works in server
+    if interaction.guild is None:
+        return await interaction.response.send_message(
+            "Sorry, I don't respond to direct messages. Please use me in a server! 🦖",
+            ephemeral=True
+        )
+    
     await interaction.response.defer(thinking=True, ephemeral=False)
 
     user_id = interaction.user.id
