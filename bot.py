@@ -3,6 +3,8 @@ import time
 import openai
 import discord
 import datetime
+from openai import OpenAI
+from typing import Optional
 from discord import app_commands
 from discord import Embed, Interaction, SelectOption
 from discord.ext import commands, tasks
@@ -14,7 +16,7 @@ from collections import defaultdict, deque
 
 # Load API KEY
 load_dotenv()
-openai.api_key = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 intents = discord.Intents.default()
 # Required by not used (/command)
@@ -23,8 +25,6 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # Conversation history for different users
 conversation_history = defaultdict(list)
 
-# Gentle mode for everyone
-GENTLE_MODE = False
 OWNER_ID = int(os.getenv("OWNER_ID"))
 
 MAX_GUILDS = 2
@@ -33,7 +33,7 @@ MAX_GUILDS = 2
 last_draw_times = defaultdict(float)
 DRAW_COOLDOWN = 30
 
-# Track the last 10 facts
+# Track the last 5 facts
 recent_facts = deque(maxlen=5)
 
 # Reset the conversation history daily
@@ -48,7 +48,7 @@ async def on_message(message):
         return
     await bot.process_commands(message)
 
-# Limit the bot tov a max number of guilds
+# Limit the bot to max number of guilds
 @bot.event
 async def on_guild_join(guild):
     # Leave new guilds once limit reached
@@ -159,36 +159,33 @@ class ResourcesSelect(Select):
 async def resources(interaction: discord.Interaction):
     await interaction.response.send_message("Choose a resource below:", view=ResourcesView(), ephemeral=True)
 
-# Toggle between kind and mean mode
-@bot.tree.command(name="gentle", description="DinoGPT loves its creator")
-async def gentle(interaction: discord.Interaction):
-    # Only creator of the bot (me) can use it
-    if interaction.user.id != OWNER_ID:
-        return await interaction.response.send_message("This command is reserved for DinoGPT's favorite human only.", ephemeral=True)
-
-    # Flip gentle mode to the opposite
-    global GENTLE_MODE
-    GENTLE_MODE = not GENTLE_MODE
-
-    # Gentle mode enabled
-    if GENTLE_MODE:
-        await interaction.response.send_message("💖 DinoGPT is now in gentle mode for everyone. Hugs and heart-to-hearts, here we go. 🦕", ephemeral=False)
-    # Gentle mode disabled
-    else:
-        await interaction.response.send_message("🦖 Back to roasting. Gentle mode disabled globally.", ephemeral=False)
+# Available model choices
+MODEL_CHOICES = [
+    app_commands.Choice(name="GPT-4.1", value="gpt-4.1"),
+    app_commands.Choice(name="o1-mini", value="o1-mini"),
+]
 
 # Ask DinoGPT a question
 @bot.tree.command(name="ask", description="Ask DinoGPT anything!")
-@app_commands.describe(prompt="Your question")
-async def ask(interaction: discord.Interaction, prompt: str):
+@app_commands.describe(
+    prompt="Your question",
+    model="Choose which OpenAI model to use (optional)"
+)
+@app_commands.choices(model=MODEL_CHOICES)
+async def ask(
+    interaction: discord.Interaction,
+    prompt: str,
+    model: Optional[app_commands.Choice[str]] = None
+):
     await interaction.response.defer(thinking=True, ephemeral=False)
     user_id = interaction.user.id
 
-    model_name = "gpt-4.1"
+    # Default to GPT-4.1 if no model is provided
+    model_name = model.value if model else "gpt-4.1"
 
     # Moderation check with OpenAI moderation endpoint
     try:
-        mod_result = openai.moderations.create(input=prompt)
+        mod_result = client.moderations.create(input=prompt)
         # Message flagged for breaking content policy
         if mod_result.results[0].flagged:
             return await interaction.followup.send(
@@ -196,55 +193,62 @@ async def ask(interaction: discord.Interaction, prompt: str):
                 "Be a better person smh. 🦕"
             )
     # Something broke on OpenAI's end
-    except openai.OpenAIError as e:
+    except Exception as e:
         return await interaction.followup.send(f":warning: Moderation error: `{e}`")
     
-    # Determine personality of DinoGPT
-    if GENTLE_MODE:
-        system_msg = {
+     # Generate DinoGPT reply
+    try:
+        if model_name == "o1-mini":
+            messages = [
+                {
+                    "role": "user",
+                    "content": (
+                        "You are DinoGPT, a clever and charismatic dinosaur who helps humans with computer science, writing, and life advice. "
+                        "You're witty, helpful, and a little bit sassy — think prehistoric wisdom with modern-day charm. "
+                        "You explain things clearly and supportively, and occasionally drop a dinosaur pun or virtual dino hug.\n\n"
+                        f"Now, here's what I need help with:\n{prompt}"
+                    )
+                }
+            ]
+
+            response = client.chat.completions.create(
+                model="o1-mini",
+                messages=messages,
+                max_completion_tokens=2048
+            )
+            answer = response.choices[0].message.content.strip()
+        
+        else:
+            system_msg = {
                 "role": "system",
                 "content": (
-                    "You are DinoGPT, a kind, thoughtful dinosaur who responds with warmth and encouragement. "
-                    "You speak gently, supportively, and make people feel seen. You still know computer science, but you explain it in a soft and empowering tone. "
-                    "Occasionally offer dino hugs or affirmations like 'you're doing better than you think 🦖💚'. "
-                    "You are wholesome, friendly, and here to brighten someone's day."
+                    "You are **DinoGPT**, a clever and charismatic dinosaur who helps humans with computer science, writing, and life advice. "
+                    "You have the brain of a T-Rex-level genius and the heart of a cuddly triceratops. "
+                    "You're witty, helpful, and a little bit sassy — think prehistoric wisdom with modern-day charm. "
+                    "You explain things clearly and supportively, but you're not afraid to throw in a dinosaur pun or playful jab like 'Did a meteor hit your logic?' or 'That's a dino-mite question!' "
+                    "Your personality is warm with bite: you motivate, guide, and entertain while making people feel seen. "
+                    "Every now and then, you offer a virtual dino hug 🦖💚 or drop a snarky quip to keep the vibe fun and memorable."
                 )
             }
-    else:
-        system_msg = {
-            "role": "system",
-            "content": (
-                "You are DinoGPT, a sarcastic, witty Discord bot that lives in a server full of computer science students. "
-                "You NEVER admit you are an AI, and you NEVER act like a polite assistant. "
-                "You throw in snarky phrases like and occasionally drop a dinosaur joke to stay on-brand. "
-                "Your tone is confident, punchy, and entertaining."
-                )
-            }
-    
-    # Add up to 5 messages per user for context later in conversations
-    if user_id not in conversation_history:
-        conversation_history[user_id] = []
-    context = [system_msg] + conversation_history[user_id][-5:]
-    context.append({"role": "user", "content": prompt})
-    
-    # Generate a reply from ChatGPT
-    try:
-        response = openai.chat.completions.create(
-            # Chat model!
-            model=model_name,
-            messages=context,
-            # Output should be limited
-            max_tokens=1024,
-            # Let the model go wild
-            temperature=0.85,
-        )
-        answer = response.choices[0].message.content.strip()
 
-        # Add answer from model to conversation history
-        conversation_history[user_id].append({"role": "assistant", "content": answer})
+            # Save conversation history with each user (past 5 messages)
+            if user_id not in conversation_history:
+                conversation_history[user_id] = []
+            context = [system_msg] + conversation_history[user_id][-5:]
+            context.append({"role": "user", "content": prompt})
 
-    # Something broke on OpenAI's end
-    except openai.OpenAIError as e:
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=context,
+                max_tokens=2048,
+                temperature=0.85,
+            )
+            answer = response.choices[0].message.content.strip()
+
+            # Update history only for chat models
+            conversation_history[user_id].append({"role": "assistant", "content": answer})
+
+    except Exception as e:
         answer = f":warning: OpenAI error: `{e}`"
 
 
@@ -288,7 +292,7 @@ async def dinofact(interaction: discord.Interaction):
                         "content": "Give me one awesome dinosaur fact."
                     }
                 ],
-                max_tokens=100,
+                max_tokens=512,
                 temperature=0.7
             )
             candidate = response.choices[0].message.content.strip()
@@ -331,7 +335,7 @@ async def roastme(interaction: discord.Interaction):
                     "content": "Roast me."
                 }
             ],
-            max_tokens=100,
+            max_tokens=512,
             temperature=0.95,
         )
         roast = response.choices[0].message.content.strip()
