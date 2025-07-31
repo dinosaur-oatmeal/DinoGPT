@@ -35,7 +35,9 @@ last_draw_times = defaultdict(float)
 DRAW_COOLDOWN = 30
 
 # Track the last 5 dino facts
-recent_facts = deque(maxlen=5)
+recent_facts = deque(maxlen = 5)
+
+ALLOWED_CHANNEL_IDS = [1400598300201324574, 1364724551916978259]
 
 # Reset conversation history daily
 @tasks.loop(time=datetime.time(hour=4, minute=0))
@@ -46,11 +48,6 @@ async def reset_conversation_history():
 @bot.event
 async def on_message(message):
     if message.guild is None or message.author.bot:
-        return
-    
-    # Don't respond if bot can't see channel
-    perms = message.channel.permissions_for(message.guild.me)
-    if not perms.view_channel or not perms.send_messages:
         return
     
     await bot.process_commands(message)
@@ -196,6 +193,12 @@ async def ask(
             ephemeral=True
         )
     
+    # Command only works in allowed channels
+    if interaction.channel_id not in ALLOWED_CHANNEL_IDS:
+        return await interaction.response.send_message(
+            "Sorry, I can only be used in one channel. 🦖", ephemeral=False
+        )
+    
     await interaction.response.defer(thinking=True, ephemeral=False)
     user_id = interaction.user.id
 
@@ -295,6 +298,12 @@ async def dinofact(interaction: discord.Interaction):
             ephemeral=True
         )
     
+    # Command only works in allowed channels
+    if interaction.channel_id not in ALLOWED_CHANNEL_IDS:
+        return await interaction.response.send_message(
+            "Sorry, I can only be used in one channel. 🦖", ephemeral=False
+        )
+    
     await interaction.response.defer(ephemeral=False, thinking=True)
 
     fact = ""
@@ -348,6 +357,12 @@ async def roastme(interaction: discord.Interaction):
             ephemeral=True
         )
     
+    # Command only works in allowed channels
+    if interaction.channel_id not in ALLOWED_CHANNEL_IDS:
+        return await interaction.response.send_message(
+            "Sorry, I can only be used in one channel. 🦖", ephemeral=False
+        )
+    
     await interaction.response.defer(ephemeral=False, thinking=True)
 
     try:
@@ -388,6 +403,12 @@ async def draw(interaction: discord.Interaction, prompt: str):
         return await interaction.response.send_message(
             "Sorry, I don't respond to direct messages. Please use me in a server! 🦖",
             ephemeral=True
+        )
+    
+    # Command only works in allowed channels
+    if interaction.channel_id not in ALLOWED_CHANNEL_IDS:
+        return await interaction.response.send_message(
+            "Sorry, I can only be used in one channel. 🦖", ephemeral=False
         )
     
     await interaction.response.defer(thinking=True, ephemeral=False)
