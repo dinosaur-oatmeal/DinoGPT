@@ -28,7 +28,7 @@ conversation_history = defaultdict(list)
 
 OWNER_ID = int(os.getenv("OWNER_ID"))
 
-MAX_GUILDS = 2
+MAX_GUILDS = 3
 
 # Draw cooldown
 last_draw_times = defaultdict(float)
