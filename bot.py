@@ -47,6 +47,12 @@ async def reset_conversation_history():
 async def on_message(message):
     if message.guild is None or message.author.bot:
         return
+    
+    # Don't respond if bot can't see channel
+    perms = message.channel.permissions_for(message.guild.me)
+    if not perms.view_channel or not perms.send_messages:
+        return
+    
     await bot.process_commands(message)
 
 # Limit bot to max number of guilds
