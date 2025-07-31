@@ -196,7 +196,7 @@ async def ask(
     # Command only works in allowed channels
     if interaction.channel_id not in ALLOWED_CHANNEL_IDS:
         return await interaction.response.send_message(
-            "Sorry, I can only be used in one channel. 🦖", ephemeral=False
+            "Sorry, I can only be used in one channel. 🦖", ephemeral=True
         )
     
     await interaction.response.defer(thinking=True, ephemeral=False)
@@ -301,7 +301,7 @@ async def dinofact(interaction: discord.Interaction):
     # Command only works in allowed channels
     if interaction.channel_id not in ALLOWED_CHANNEL_IDS:
         return await interaction.response.send_message(
-            "Sorry, I can only be used in one channel. 🦖", ephemeral=False
+            "Sorry, I can only be used in one channel. 🦖", ephemeral=True
         )
     
     await interaction.response.defer(ephemeral=False, thinking=True)
@@ -360,7 +360,7 @@ async def roastme(interaction: discord.Interaction):
     # Command only works in allowed channels
     if interaction.channel_id not in ALLOWED_CHANNEL_IDS:
         return await interaction.response.send_message(
-            "Sorry, I can only be used in one channel. 🦖", ephemeral=False
+            "Sorry, I can only be used in one channel. 🦖", ephemeral=True
         )
     
     await interaction.response.defer(ephemeral=False, thinking=True)
@@ -408,7 +408,7 @@ async def draw(interaction: discord.Interaction, prompt: str):
     # Command only works in allowed channels
     if interaction.channel_id not in ALLOWED_CHANNEL_IDS:
         return await interaction.response.send_message(
-            "Sorry, I can only be used in one channel. 🦖", ephemeral=False
+            "Sorry, I can only be used in one channel. 🦖", ephemeral=True
         )
     
     await interaction.response.defer(thinking=True, ephemeral=False)
